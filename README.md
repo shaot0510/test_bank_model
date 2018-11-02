@@ -30,7 +30,7 @@
 </div>
 
 
-# A change was made<a id="sec-1" name="sec-1"></a>
+# Another change was made<a id="sec-1" name="sec-1"></a>
 
 ## Description<a id="sec-1-1" name="sec-1-1"></a>
 
