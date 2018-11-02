@@ -1,10 +1,12 @@
 import os
-
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+
 sns.set(style="white", palette="muted", color_codes=True)
+
 
 # global functions
 def lookup(s):
@@ -20,24 +22,16 @@ def lookup(s):
     dates[np.nan] = np.nan
     return s.map(dates)
 
-# code chunk that I saw in Gabriel Preda kernel
-def missing_values(data):
-    total = data.isnull().sum().sort_values(ascending = False)
-    # getting the sum of null values and ordering
-    percent = (data.isnull().sum() / data.isnull().count() * 100 ).sort_values(ascending = False) #getting the percent and order of null
-    df = pd.concat([total, percent], axis=1, keys=['Total', 'Percent']) # Concatenating the total and percent
-    print("Columns with at least one na")
-    print (df[~(df['Total'] == 0)]) # Returning values of nulls different of 0
-        
-    return
 
 # set PATH variables
 PATH = os.getcwd()
-CLEAN_PATH = os.path.join(PATH, '..', 'clean')
-EXPORT_PATH = os.path.join(PATH, 'results')
+CURR_PATH = os.path.join(PATH, 'data', 'fannie_mae_data', 'EDA')
+CLEAN_PATH = os.path.join(PATH, 'data', 'fannie_mae_data', 'clean')
+EXPORT_PATH = os.path.join(CURR_PATH, 'results')
+
 
 # Reading data
-with open('EDA_filelist.txt') as f:
+with open(os.path.join(CURR_PATH, 'EDA_filelist.txt')) as f:
         filelist, yearlist = [], []
         for line in f:
             year_files = line.split()
@@ -48,7 +42,7 @@ with open('EDA_filelist.txt') as f:
                 sys.exit(1)
             filelist.append(year_files[1:])
 
-with open('EDA_varlist.txt') as f:
+with open(os.path.join(CURR_PATH, 'EDA_varlist.txt')) as f:
     varlist = {'CAT':[], 'CONT':[]}
     for line in f:
         type_vars = line.split()
@@ -97,7 +91,6 @@ for i in range(len(filelist)):
         print('With year restriction, retained {0:.2f}% of {1} loans'
               .format(100 * batch_to_concat.shape[0]/a[0], a[0]))
         del batch_to_concat['yORIG_DTE']
-        
         # concat to df
         df = pd.concat([df, batch_to_concat], axis=0)
         print('\nTotal number of rows of df: {0}'
@@ -110,7 +103,7 @@ df['strPRD'] = df['PRD'].astype(str)
 
 print('\nCreating ORIG_data...')
 # variables to include
-ORIG_vars = (['strPRD', 'ORIG_AMT', 'ORIG_DTE', 'PRD', 'DID_DFLT'] +
+ORIG_vars = (['strPRD', 'ORIG_AMT', 'ORIG_DTE', 'ORIG_YR', 'PRD', 'DID_DFLT'] +
              cat_vars + cont_vars)
 # just get the last row for each LOAN_ID
 ORIG_data = df.groupby('LOAN_ID')[ORIG_vars].last().reset_index()
@@ -118,6 +111,9 @@ print('Number of unique LOAN_IDs: {0}'.format(ORIG_data.shape[0]))
 
 # delete DID_DFLT in original df
 del df['DID_DFLT']
+
+# get origination year
+df['ORIG_YR'] = df['ORIG_DTE'].apply(lambda x: x.year)
 
 # modify DID_DFLT column
 to_merge = ORIG_data[['LOAN_ID', 'strPRD', 'DID_DFLT']]
@@ -131,27 +127,15 @@ df['NET_LOSS_AMT'] = df['NET_LOSS'] * df['DID_DFLT']
 # delete unnecessary vars
 del ORIG_data['strPRD']
 
-
 # ORIG_data analysis
 ORIG_data.info()
 
-# missing values
-print('\n')
-missing_values(ORIG_data)
 
-ORIG_data[cont_vars].describe()
+# Questions
+# For each column, show the number of missing values and percentage of total
 
-plt.figure(figsize=(10,10))
-for k, var_name in enumerate(cont_vars):
-    plt.subplot(2, 2, k + 1)
-    sns.distplot(ORIG_data[var_name].dropna())
-    plt.xlabel(var_name)
-    
-[c for c in cont_vars + cat_vars]
+# Calculate total number of loans for each year
+# Calculate percentage of default for each origination year year
 
-for c in cat_vars:
-    print(ORIG_data[c].value_counts())
-
-sns.catplot(x="PURPOSE", y="DTI", hue="PROP_TYP", data=ORIG_data,
-                height=6, kind="bar", palette="muted")
-
+# Plot a histogram of net loss amounts for loans with nonzero losses in 2000, 2007 separately
+# What percentage of loans in 2012, 2016 had nonzero losses?
