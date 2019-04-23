@@ -95,10 +95,6 @@ Place the original dataset in &lsquo;raw&rsquo; and the dataset that has been fo
 - John Han: hanjae1122
 - Yijie Gui: guiyijie
 - Tong Shao: shaot0510
-- Siyan Shen: siyanshen
-- Guangzhe Zhu: andyzhugz
-- Sheng Qiao: syqiao26
-- Xiao Han: hannxiao
 
 ## Credits
 
