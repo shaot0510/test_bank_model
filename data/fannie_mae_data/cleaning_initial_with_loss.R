@@ -1,12 +1,18 @@
 #!/usr/bin/env Rscript
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(optparse, # for reading command line input
+               LaF, # for reading large dataset in chunks
+               readr, # for getting num rows
                foreach, data.table, zoo, dplyr, ggplot2)
 
 # create default command line args
 option_list = list(
-  	make_option(c("-s", "--cutoff_size"), type="integer", default=1000, 
-              help="file reader will only read this many rows of each raw file [default=%default]", metavar="integer")
+  make_option(c("-n", "--num_loans_to_read"), type="integer", default=1e4, 
+              help="file reader will only read this many unique loans from each raw file [default=%default]", metavar="integer"),
+  make_option(c("-c", "--chunk_size"), type="integer", default=1e6, 
+              help="file reader will read this many rows at a time [default=%default]", metavar="integer"),
+  make_option(c("-f", "--has_wc"), type="logical", default=FALSE, 
+              help="set to False if wc is not available on your system [default=%default]", metavar="integer")
 )
 opt_parser = OptionParser(option_list=option_list)
 opt = parse_args(opt_parser)
@@ -18,6 +24,9 @@ opt = parse_args(opt_parser)
 
 fileslocation <- "raw"
 outputlocation <- "clean"
+
+# create directories
+dir.create(file.path(outputlocation), showWarnings = FALSE)
 
 # Create function to handle missing Current UPBs in the last record by setting them to the record prior
 # forward fill
@@ -185,23 +194,24 @@ Years <- c()
 
 # Ensure each pair downloaded for each quarter
 for (k in 1:numberofloops) {
-    acq_match <- regexpr(pattern, Acquisitions[k])
-    acq_date <- regmatches(Acquisitions[k], acq_match)
-    perf_match <- regexpr(pattern, Performance[k])
-    perf_date <- regmatches(Performance[k], perf_match)
-    if (acq_date == perf_date) {
-        Years[k] <- acq_date
-    } else {
-        stop('Performance and Acquisition files not properly downloaded')
-    }
+  acq_match <- regexpr(pattern, Acquisitions[k])
+  acq_date <- regmatches(Acquisitions[k], acq_match)
+  perf_match <- regexpr(pattern, Performance[k])
+  perf_date <- regmatches(Performance[k], perf_match)
+  if (acq_date == perf_date) {
+    Years[k] <- acq_date
+  } else {
+    stop('Performance and Acquisition files not properly downloaded')
+  }
 }
 
+print(paste('Will read', opt$num_loans_to_read, 'loans per file'))
 for (k in 1:numberofloops) {
   print('=====================================================================')
   print(paste('Processing Data.A for', Years[k]))
   Data.A <- fread(Acquisitions[k], sep = "|",
                   colClasses = Acquisition_ColClasses, showProgress=FALSE)
-
+  
   setnames(Data.A, Acquisitions_Variables)
   setkey(Data.A, "LOAN_ID")
   
@@ -217,11 +227,65 @@ for (k in 1:numberofloops) {
                                                       ifelse(is.na(OCLTV), OLTV, OCLTV))]
   
   print(paste('Reading Data.P for', Years[k]))
+  
+  # get nrow
+  # if wc not available, use readr, which takes longer
+  if (opt$has_wc) {
+    row.num <- as.numeric(system(paste('cat', Performance[k], '|', 'wc', '-l'), intern = TRUE))
+  } else {
+    row.num <- length(readr::count_fields(Performance[k], tokenizer = readr::tokenizer_csv()))
+  }
+  
+  try(if(row.num < opt$chunk_size) stop(paste(Performance[k], 'has',
+                                              row.num, 'rows: not big enough', sep=' ')))
+  
+  print(paste(Years[k], 'has', row.num, 'rows'))
+  
   # Read and Process Performance data
-  # ONLY READ subset of ROWS
-  Data.P = fread(Performance[k], sep = "|", colClasses = Performance_ColClasses, 
-                 showProgress=T, nrows=opt$cutoff_size)
-  setnames(Data.P, Performance_Variables)
+  # read one chunk at a time using LaF
+  # First detect a data model for your file:
+  model <- detect_dm_csv(Performance[k], sep = "|", colClasses = Performance_ColClasses)
+  # create a connection to your file using the model:
+  df.laf <- laf_open(model)
+  
+  CreditEventCodes <- c("09", "03", "02", "15")
+  Data.P <- data.table()
+  Data.Last.Valid <- data.table()
+  ids.added.so.far <- c()
+  
+  # randomized start points in chunks
+  possible.start.pts <- sample(seq(from = 1, to = row.num, by = opt$chunk_size))
+  iter <- 1
+  while (iter < length(possible.start.pts) & length(ids.added.so.far) < opt$num_loans_to_read) {
+    # max num rows per ID is 360
+    # 1e6 gives almost same prob to small rows and covers many loans at a time
+    goto(df.laf, possible.start.pts[iter])
+    data <- data.table(next_block(df.laf, nrows=opt$chunk_size))
+    setnames(data, Performance_Variables)
+    
+    # remove already added ids and first and last ids since they are incomplete
+    invalid.tail.ids <- data[c(1, dim(data)[1]), LOAN_ID]
+    data <- data[!(LOAN_ID %in% c(ids.added.so.far, invalid.tail.ids))]
+    
+    # get last row per id
+    # create DID_DFLT
+    # remove prepaid loans
+    # remove loans that did not default but
+    # zero-balanced before last date (<1% of loans)
+    id.codes <- data[, Zero.Bal.Code[.N], by='LOAN_ID']
+    id.codes[, DID_DFLT := ifelse(V1 %in% CreditEventCodes, 1, 0)]
+    invalid.ids <- id.codes[V1 == '01' | (DID_DFLT == 0 & V1 != "")]$LOAN_ID
+    to.bind <- data[!(LOAN_ID %in% invalid.ids)]
+    ids.added.so.far <- c(ids.added.so.far, unique(to.bind$LOAN_ID))
+    Data.P <- rbindlist(list(Data.P, to.bind), use.names=TRUE)
+    Data.Last.Valid <- rbindlist(list(Data.Last.Valid, 
+                                      id.codes[!(id.codes$LOAN_ID %in% invalid.ids),
+                                               c('LOAN_ID', 'DID_DFLT')]), use.names=TRUE)
+    iter <- iter + 1
+  }
+  print(paste('Read', length(ids.added.so.far), 'loans from', Years[k], 'after',
+              iter - 1, 'iterations'))
+  rm(invalid.ids, id.codes, to.bind, ids.added.so.far)
   
   print(paste('Converting dates for', Years[k]))
   # Convert character variables to Date type
@@ -232,10 +296,6 @@ for (k in 1:numberofloops) {
   # Sort data by Loan ID and Monthly Reporting Period
   setorderv(Data.P, c("LOAN_ID", "Monthly.Rpt.Prd"))
   setkey(Data.P, "LOAN_ID")
-  
-  # REMOV LAST ORIG_DTE
-  last.ID <- Data.P[dim(Data.P)[1], 'LOAN_ID']
-  Data.P <- Data.P[!last.ID]
   
   # Standardize Delinquency Status Codes
   Data.P$Delq.Status<-as.numeric(ifelse(Data.P$Delq.Status %in% c("X", ""), "999", Data.P$Delq.Status))
@@ -261,21 +321,9 @@ for (k in 1:numberofloops) {
                 ifelse(Data.P$LPI_DTE!="" & !(is.na(Data.P$DISP_DT)),as.numeric((year(DISP_DT)-year(as.yearmon(LPI_DTE, "%m/%d/%Y")))*12+month(DISP_DT)-month(as.yearmon(LPI_DTE, "%m/%d/%Y"))), 0),
                 ifelse(!(is.na(Data.P$ZB_DTE)) & !(is.na(Data.P$DISP_DT)),as.numeric((year(DISP_DT)-year(as.yearmon(ZB_DTE, "%m/%Y")))*12+month(DISP_DT)-month(as.yearmon(ZB_DTE, "%m/%Y"))), 0)
            )]
+  CreditEvents <- c("F", "S", "T", "N")
   
   # View(Data.P[1:100000, c('Zero.Bal.Code', 'LPI_DTE', 'DISP_DT', 'ZB_DTE', "LAST_STAT", "lpi2disp", "zb2disp")])
-  
-  # create DID_DFLT
-  # remove prepaid loans
-  # remove loans that did not default but
-  # zero-balanced before last date (<1% of loans)
-  CreditEvents <- c("F", "S", "T", "N")
-  Data.Last <- Data.P[, .SD[.N, .(LAST_STAT, Zero.Bal.Code)], by=LOAN_ID]
-  Data.Last[, DID_DFLT := ifelse(LAST_STAT %in% CreditEvents, 1, 0)]
-  Data.Last.Valid <- Data.Last[LAST_STAT != 'P' & (DID_DFLT != 0 | Zero.Bal.Code == "")]
-  Data.P <- Data.P[LOAN_ID %in% Data.Last.Valid$LOAN_ID]
-  
-  # remove all but DID_DFLT
-  Data.Last.Valid[, c("LAST_STAT", "Zero.Bal.Code") := NULL]
   
   # Add Original Rate from the Acquisitions Files
   Data.P[Data.A, ORIG_RT:=i.ORIG_RT, allow.cartesian=TRUE]
@@ -358,6 +406,7 @@ for (k in 1:numberofloops) {
   # Save a Copy to disk or write a .txt file.
   year <- Years[k]
   print(paste('Exporting for', year))
-  fwrite(Combined_Data, file = file.path(outputlocation, paste(opt$cutoff_size, year, 'csv', sep='.')))
+  fwrite(Combined_Data, file = file.path(outputlocation, 
+                                         paste(opt$num_loans_to_read, year, 'csv', sep='.')))
   rm(Combined_Data)
 }

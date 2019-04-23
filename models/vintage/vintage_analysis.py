@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 import re
 import datetime
@@ -6,10 +7,15 @@ import importlib
 
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+ROOT_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..')
+sys.path.insert(0, ROOT_PATH)
 from modules import models, bootstrap, utility
+
 
 # remove settingcopywithwarning
 pd.options.mode.chained_assignment = None
@@ -97,15 +103,14 @@ def main(args):
     ############################################################
     # READ/PROCESS/CLEAN DATA
     ############################################################
-    # BASE_PATH = os.path.join(os.getcwd(), 'data')
-    BASE_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                        '../../data')
-
+    
+    BASE_PATH = os.path.join(ROOT_PATH, 'data')
     DIR_PATH = os.path.join(BASE_PATH, args.dataname)
     DATA_PATH = os.path.join(DIR_PATH, 'vintage_analysis', 'data')
     EXPORT_PATH = os.path.join(DIR_PATH, 'vintage_analysis', 'results')
     ECON_PATH = os.path.join(BASE_PATH, 'economic')
     FILENAME = args.filename
+    savemodel = args.DO_SAVE
 
     df = pd.read_csv(os.path.join(DATA_PATH, FILENAME),
                      parse_dates=['PRD', 'ORIG_DTE'])
@@ -158,12 +163,7 @@ def main(args):
     # MODEL SPECS
     ############################################################
     # Stage 1
-    selected = ['UNEMP', 'HPI', 'rGDP', 'ORIG_AMT_sum', 'ORIG_CHN_R_wv',
-                'LOAN_ID_count', 'MR', 'LIBOR', 'DTI_wm', 'AGE', 'CPI',
-                'ORIG_RT_wm', 'ORIG_RT_cv', 'ORIG_CHN_R_wm', 'ORIG_RT_wv',
-                'ORIG_CHN_R_cv', 'DTI_wv', 'OCLTV_wv',
-                'ORIG_CHN_C_wv', 'ORIG_CHN_C_cv',
-                'CSCORE_MN_wv', 'PURPOSE_R_cv', 'CSCORE_MN_wm', 'PURPOSE_R_wv']
+    selected = ['UNEMP', 'HPI', 'rGDP', 'ORIG_AMT_sum']
     gbm_formula1 = 'did_dflt ~ -1 + {0}'.format(' + '.join(selected))
     kw1 = {'learning_rate': 0.1, 'max_depth': 3, 'max_features': 0.5,
            'min_impurity_decrease': 0.0001, 'n_estimators': 10, 'subsample': 0.1}
@@ -207,7 +207,8 @@ def main(args):
     if not os.path.exists(output_dir_path):
         print('\nCreating directory at export location...')
         os.makedirs(output_dir_path)
-
+        
+    path_index = 1
     for train, test, trial_i in utility.train_test_splitter(df,
                                                             0.1, 'ORIG_DTE'):
         train_pos = train[train['dflt_pct'] > 0]
@@ -215,18 +216,40 @@ def main(args):
         # stage 1
         train['PD_pred'], test['PD_pred'] = fit_stage1(model_specs[0],
                                                        train, test, True)
+        
+        # model 1
+        model1 = get_fitted_model(train, test, model_specs[0])
+        
         # stage 2
         train['EAD_pred'], test['EAD_pred'] = fit_stage2(model_specs[1],
                                                          train_pos, test,
                                                          True, train)
+        # model 2
+        model2 = get_fitted_model(train_pos, test, model_specs[1])
+        
+        
         # stage 3
         train['LGD_pred'], test['LGD_pred'] = fit_stage3(model_specs[2],
                                                          train_pos, test,
                                                          True, train)
+        # model 3
+        model3 = get_fitted_model(train_pos, test, model_specs[2])
+        
+
+        
         train['L_pred'] = train['PD_pred'] * \
             train['EAD_pred'] * train['LGD_pred']
         test['L_pred'] = test['PD_pred'] * test['EAD_pred'] * test['LGD_pred']
         test_pos = test[test['dflt_pct'] > 0]
+               
+        pathname = str(path_index)
+        
+        train.to_csv(pathname)
+        
+        if savemodel == True:
+            utility.save_3stages(model1, model2, model3, pathname)
+        
+        path_index += 1
 
         # get bootstraps
         print('\nRunning bootstraps...')
@@ -255,6 +278,7 @@ def main(args):
         df_stage3 = pd.concat([test_pos[[vin_id, x,
                                          'net_loss_pct', 'LGD_pred']],
                                btstrp_stage3], axis=1)
+        
 
         for date, dall in df_all.groupby(vin_id):
             print('\nGenerating plots for {0}...'.format(date))
@@ -366,9 +390,9 @@ def main(args):
             plotname = '{2}.{1}.{0}.png'.format(loan_count, date, trial_i)
             plt.savefig(os.path.join(output_dir_path, plotname),
                         dpi=300, bbox_inches='tight')
-            # plt.show()
+            plt.show()
             plt.clf()
-
+            
         # # generate plots with all vintages grouped
         # ds = [df_stage1, df_stage2, df_stage3]
         # dall = df_all
@@ -462,6 +486,7 @@ if __name__ == '__main__':
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('dataname', type=str, nargs='?', default='fannie_mae_data',
                         help='name of data folder')
-    parser.add_argument('filename', type=str, help='name of data file')
+    parser.add_argument('filename', type=str, nargs='?', default = 'vintage_filelist_50.csv', help='name of data file')
+    parser.add_argument('-s', '--DO_SAVE', action='store_true')
     args = parser.parse_args()
     main(args)

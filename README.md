@@ -1,38 +1,6 @@
-﻿<div id="table-of-contents">
-<h2>Table of Contents</h2>
-<div id="text-table-of-contents">
-<ul>
-<li><a href="#sec-1">CECL Project</a>
-<ul>
-<li><a href="#sec-1-1">Description</a></li>
-<li><a href="#sec-1-2">Installation</a>
-<ul>
-<li><a href="#sec-1-2-1">Prerequisites</a></li>
-<li><a href="#sec-1-2-2">Installing</a></li>
-</ul>
-</li>
-<li><a href="#sec-1-3">Usage</a>
-<ul>
-<li><a href="#sec-1-3-1">Project structure</a></li>
-<li><a href="#sec-1-3-2">Inputs</a></li>
-<li><a href="#sec-1-3-3">Vintage Aggregation</a></li>
-<li><a href="#sec-1-3-4">Modeling</a></li>
-</ul>
-</li>
-<li><a href="#sec-1-4">Notes</a></li>
-<li><a href="#sec-1-5">Contributing</a></li>
-<li><a href="#sec-1-6">Credits</a></li>
-<li><a href="#sec-1-7">License</a></li>
-</ul>
-</li>
-</ul>
-</div>
-</div>
+# CECL Project
 
-
-# Another change was made<a id="sec-1" name="sec-1"></a>
-
-## Description<a id="sec-1-1" name="sec-1-1"></a>
+## Description
 
 Given a portfolio of loans, we would like to model the net loss incurred over time. The final model output is lifetime expected credit losses for loss reserving under current expected credit loss (CECL). Broadly speaking, we use a probability of default model where expected loss is the product of 3 components:
 
@@ -40,36 +8,25 @@ Given a portfolio of loans, we would like to model the net loss incurred over ti
 
 We use Fannie Mae&rsquo;s [Single-Family Loan Performance Data](http://www.fanniemae.com/portal/funding-the-market/data/loan-performance-data.html) to test our assumptions and model accuracy. The repository includes instructions and preprocessing code for the fannie mae dataset for those who wish to test the code on real data. The core code, however, will work with any generic loan dataset that fits the requirements described below.
 
-## Installation<a id="sec-1-2" name="sec-1-2"></a>
+## Installation
 
-### Prerequisites<a id="sec-1-2-1" name="sec-1-2-1"></a>
+### Prerequisites
 
-The main code base is written in python version 3.6 and relies on multiple packages including numpy, pandas and statsmodels. In order to keep track of package versions, we use [pipenv](https://pipenv.readthedocs.io/en/latest/), a virtual environment manager for python. It eases the process of setting up a working environment. Refer to its [documentation](https://pipenv.readthedocs.io/en/latest/install/) to see how it works.
+The main code base is written in python version 3.6 and relies on multiple packages including numpy, pandas and statsmodels. In order to keep track of package versions, we maintain a .yml file used with [Conda](https://conda.io/docs/index.html), 'an open source package management system and environment management system that runs on Windows, macOS and Linux'. It eases the process of setting up a working environment. Refer to its [documentation](https://conda.io/docs/user-guide/tasks/manage-environments.html) to see how it works.
 
 The repository also includes preprocessing code for a dataset from Fannie Mae. Refer to the directory data/fannie\_mae\_data for more information. Preprocoessing code is written in R and also depends on various packages, which are specified in the file.
 
-### Installing<a id="sec-1-2-2" name="sec-1-2-2"></a>
+### Installing
 
 Clone this repository to your local machine
 
     git clone https://github.com/smetterspa/bank_model.git
 
-Make sure you have python 3.6 and pipenv, which you can download using pip that comes with python.
+Make sure you have setup a virtual environment with the right package versions specified in the .yml file. Now run scripts in the repository with this virtual environment activated. To learn how to activate an environment with Conda [click here](https://conda.io/docs/user-guide/tasks/manage-environments.html#activating-an-environment).
 
-    pip install pipenv
+## Usage
 
-Change current directory to the cloned repository and use &lsquo;pipenv install&rsquo; to create a virtual environment and download all necessary packages simultaneously.
-
-    cd path_to_cloned_repo
-    pipenv install
-
-Now you can run any script in the repository using pipenv.
-
-    pipenv run python3 example.py
-
-## Usage<a id="sec-1-3" name="sec-1-3"></a>
-
-### Project structure<a id="sec-1-3-1" name="sec-1-3-1"></a>
+### Project structure
 
     ├── models                  # Core code files
     │   ├── vintage             # Vintage analysis
@@ -90,7 +47,7 @@ Now you can run any script in the repository using pipenv.
     ├── Pipfile.lock
     └── README.md
 
-### Inputs<a id="sec-1-3-2" name="sec-1-3-2"></a>
+### Inputs
 
 In order to ensure everything has been setup properly, we recommend running the code with the fannie mae dataset. Instructions for obtaining and preprocessing the fannie mae dataset are in &lsquo;data/fannie\_mae\_data&rsquo;. To use a custom dataset, make sure that it is in the required input format described below. We will follow the naming conventions of the fannie mae dataset, which are described [here](http://www.fanniemae.com/portal/funding-the-market/data/loan-performance-data.html) under &lsquo;File Layout&rsquo;.
 
@@ -132,74 +89,17 @@ If using a custom dataset, create a new folder in &lsquo;data&rsquo; with the fo
 
 Place the original dataset in &lsquo;raw&rsquo; and the dataset that has been formatted according to the above specifications in &lsquo;clean&rsquo;. Specify the custom directory name when running code in the core code base. Whether using a custom dataset or the fannie mae dataset, from hereon, we will refer to the directory with the files as &lsquo;data directory&rsquo;.
 
-### Vintage Aggregation<a id="sec-1-3-3" name="sec-1-3-3"></a>
+## Notes
 
-Vintage level analysis requires loans to be aggregated by origination month. Loan information such as credit score will be weight-averaged by original amount of the loan. The aggregated data will be placed in the directory called &lsquo;vintage\_data&rsquo; within the data directory. To preprocess the data, run the following in command line:
+## Contributing
+- John Han: hanjae1122
+- Yijie Gui: guiyijie
+- Tong Shao: shaot0510
+- Siyan Shen: siyanshen
+- Guangzhe Zhu: andyzhugz
+- Sheng Qiao: syqiao26
+- Xiao Han: hannxiao
 
-    usage: vintage_aggregate.py [-h] [-l LOWER_LIM]
-                                [dataname] [filelist] [varlist]
-    
-    Aggregate loan data by vintage.
-    
-    positional arguments:
-      dataname              name of data folder (default: fannie_mae_data)
-      filelist              text file containing list of file batches to read
-                            (default: filelist.txt)
-      varlist               text file containing a row of categorical and a row of
-                            continuous loan variables (default: varlist.txt)
-    
-    optional arguments:
-      -h, --help            show this help message and exit
-      -l LOWER_LIM, --lower_lim LOWER_LIM
-                            minimum number of loans per vintage (default: 500)
+## Credits
 
--   filelist: A textfile specifying file batches. The first element of each row must be the year for the batch. The remaining elements are the filenames in that batch. One batch will be read at a time. Place this file in the data directory.
--   varlist: A textfile specifying the optional loan variables. The first element of each row must be the keyword &lsquo;CAT&rsquo; for categorical variables or &lsquo;CONT&rsquo; for continuous variables. The remaining elements are the names of the columns.
-
-A simple execution of aggregating the fannie mae dataset using pipenv will look like the following:
-
-    pipenv run python vintage_aggregate.py -l LOWER_LIM
-
-Running the code will create a new directory in the data directory called &lsquo;vintage\_analysis&rsquo;. Vintage aggregated data will be placed inside this directory under &lsquo;data&rsquo;.
-
-    ├── data                    # Contains all data needed for analysis
-    │   ├── data directory      # Name of custom dataset
-    │   │   ├── raw             # Data before any preprocessing
-    │   │   ├── clean           # Data after preprocessing
-    │   │   ├── vintage_analysis
-    │   │   │   ├── data        # Contains vintage-aggregated data
-    │   │   │   └── results     # Results from running vintage modelling code
-    └── ...
-
-### Modeling<a id="sec-1-3-4" name="sec-1-3-4"></a>
-
-With the dataset in the format we want, run the following to get model results:
-
-    usage: vintage_analysis.py [-h] [dataname] filename
-    
-    Probability of default model for vintage data.
-    
-    positional arguments:
-      dataname    name of data folder (default: fannie_mae_data)
-      filename    name of data file
-    
-    optional arguments:
-      -h, --help  show this help message and exit
-
-A simple execution with pipenv will look like:
-
-    pipenv run python vintage_analysis.py FILENAME
-
--   Model specifications
-
--   Output
-
-    All results such as plots that are generated will be placed in &lsquo;vintage\_analysis&rsquo; under a newly created directory called &lsquo;results&rsquo;.
-
-## Notes<a id="sec-1-4" name="sec-1-4"></a>
-
-## Contributing<a id="sec-1-5" name="sec-1-5"></a>
-
-## Credits<a id="sec-1-6" name="sec-1-6"></a>
-
-## License<a id="sec-1-7" name="sec-1-7"></a>
+## License

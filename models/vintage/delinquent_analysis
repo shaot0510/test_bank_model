@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Apr 19 00:34:51 2019
+
+@author: tongshao
+"""
+
+import os
+import argparse
+import re
+import datetime
+import importlib
+import sys
+
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+ROOT_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..')
+sys.path.insert(0, ROOT_PATH)
+
+from modules import models, bootstrap, utility
+
+BASE_PATH = os.path.join(ROOT_PATH, 'data')
+DIR_PATH = os.path.join(BASE_PATH, 'fannie_mae_data')
+DATA_PATH = os.path.join(DIR_PATH, 'vintage_analysis', 'data')
+SAVED_PATH = os.path.join(DATA_PATH, 'saved_model')
+
+df = pd.read_csv(os.path.join(DATA_PATH, '10000.2000Q1.csv'))
+df_dflt = df.loc[df['DID_DFLT'] == 1]
+df_not_prepay = df.loc[df['DID_PREPAY'] == 0]

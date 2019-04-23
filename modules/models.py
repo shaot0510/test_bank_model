@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod
 
 import numpy as np
 import patsy
+import json
 import pandas as pd
 
 from scipy.interpolate import interp1d
@@ -16,6 +17,9 @@ from sklearn.ensemble import (GradientBoostingClassifier,
                               RandomForestClassifier,
                               RandomForestRegressor)
 from sklearn.model_selection import StratifiedKFold, GroupKFold
+from modules import utility
+
+
 
 
 class Supervised(metaclass=ABCMeta):
@@ -66,6 +70,7 @@ class Supervised(metaclass=ABCMeta):
         pass
 
 
+
 class OLS(Supervised):
     # Ordinary Least Squares
     def __init__(self, train, test, formula):
@@ -88,6 +93,7 @@ class OLS(Supervised):
                                                      return_type='dataframe')
         self._fit = sm.OLS(**model_kwargs).fit()
         return
+
 
     # pred_input: new data to make preds on; dflts to test set
     def make_pred(self, pred_input=None, use_train=False):
@@ -144,6 +150,8 @@ class GBC(Supervised):
                      .fit(X, y.values.ravel()))
         return
 
+
+    
     # pred_input: new data to make preds on; dflts to test set
     def make_pred(self, pred_input=None, use_train=False):
         pred_kwargs = {}
@@ -165,6 +173,8 @@ class GBC(Supervised):
 
     def summary(self):
         print(self._fit.summary())
+    
+
 
 
 class RFR(Supervised):
@@ -342,6 +352,56 @@ class PHR(Supervised):
                                                  combined['hz_r'])
         del combined['base_cum_hz'], combined['hz_r']
         return combined
+
+    def summary(self):
+        print(self._fit.summary())
+
+
+class LRC(Supervised):
+    #Logistic regression classifier
+    def __init__(self, train, test, formula):
+        super().__init__(train, test, formula)
+        self._y_train, self._X_train = patsy.dmatrices(self.formula,
+                                                       self.train,
+                                                       return_type='dataframe')
+        
+    # fit_input: new data to train on; dflts to train set
+    def fit_model(self, fit_input=None, model_kwargs=None):
+        if model_kwargs is None:
+            model_kwargs = {'penalty':'l2', 'dual':False, 'tol':0.0001, 'C':1.0,
+                            'fit_intercept':True, 'intercept_scaling':1, 
+                            'class_weight':None, 'random_state':None, 'solver':'liblinear', 
+                            'max_iter':100, 'multi_class':'ovr', 'verbose':0, 
+                            'warm_start':False, 'n_jobs':None}
+        if fit_input is None:
+            # use fit_input for logistic regression classifier
+            y, X = self._y_train, self._X_train
+        else:
+            y, X = patsy.dmatrices(self.formula,
+                                   fit_input,
+                                   return_type='dataframe')
+        self._fit = (LogisticRegression(**model_kwargs)
+                     .fit(X, y.values.ravel()))
+        return
+    
+    # pred_input: new data to make preds on; dflts to test set
+    def make_pred(self, pred_input=None, use_train=False):
+        pred_kwargs = {}
+        if pred_input is None:
+            if use_train:
+                pred_kwargs['X'] = self._X_train
+            else:
+                patsy_kwargs = {'formula_like': self.formula.split('~')[1],
+                                'data': self.test,
+                                'return_type': 'dataframe'}
+                pred_kwargs['X'] = patsy.dmatrix(**patsy_kwargs)
+        else:
+            patsy_kwargs = {'formula_like': self.formula.split('~')[1],
+                            'data': pred_input,
+                            'return_type': 'dataframe'}
+            pred_kwargs['X'] = patsy.dmatrix(**patsy_kwargs)
+
+        return self._fit.predict_proba(**pred_kwargs)[:, 1].ravel()
 
     def summary(self):
         print(self._fit.summary())

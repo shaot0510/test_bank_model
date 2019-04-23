@@ -25,7 +25,7 @@ def main(args):
     lower_lim = args.lower_lim    
     PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                         '../../data', args.dataname)
-    # PATH = os.path.join(os.getcwd(), 'data', 'fannie_mae_data')
+#    PATH = os.path.join(os.getcwd(), 'Documents', 'GitHub', 'bank_model', 'data', 'fannie_mae_data')
 
     with open(os.path.join(PATH, args.filelist)) as f:
         filelist, yearlist = [], []
@@ -33,7 +33,7 @@ def main(args):
             year_files = line.split()
             try:
                 yearlist.append(int(year_files[0]))
-            except ValueError as ex:
+            except ValueError:
                 print('ValueError: First value in each row of filelist must be a year')
                 sys.exit(1)
             filelist.append(year_files[1:])
@@ -48,7 +48,7 @@ def main(args):
             except KeyError:
                 print('KeyError: Each row of varlist must start with the keyword CAT or CONT')
                 sys.exit(1)
-
+    
     cat_vars, cont_vars = varlist['CAT'], varlist['CONT']
     del varlist
 
@@ -132,13 +132,15 @@ def main(args):
         df_red['DFLT_AMT'] = df_red['FIN_UPB'] * df_red['DID_DFLT']
         df_red['NET_LOSS_AMT'] = df_red['NET_LOSS'] * df_red['DID_DFLT']
 
-        def wm_wv(x):
+        def m_v_wm_wv(x):
             nonna_inds = x[~x.isna()].index
             values = x[nonna_inds]
+            avg = np.average(values)
+            var = np.average((values-avg)**2)
             wghts = ORIG_data.loc[nonna_inds, "ORIG_AMT"]
             wghtd_avg = np.average(values, weights=wghts)
             wghtd_var = np.average((values-wghtd_avg)**2, weights=wghts)
-            return (wghtd_avg, wghtd_var)
+            return (avg, var, wghtd_avg, wghtd_var)
 
         f = {
             'LOAN_ID': 'count',
@@ -146,22 +148,22 @@ def main(args):
         }
 
         for col in cont_vars:
-            f[col] = wm_wv
+            f[col] = m_v_wm_wv
 
         for cat in cat_vars:
             dummies = pd.get_dummies(ORIG_data[cat], prefix=cat, drop_first=True)
             ORIG_data = pd.concat([ORIG_data, dummies], axis=1, join='outer')
             # del ORIG_data[cat]
             for col in dummies.columns:
-                f[col] = wm_wv
+                f[col] = m_v_wm_wv
 
         print('\nAggregating vintage data...')
         vintage_data_unsplit = ORIG_data.groupby('ORIG_DTE').agg(f)
         vintage_data = pd.DataFrame(index=vintage_data_unsplit.index)
         for col in vintage_data_unsplit.columns:
-            if f[col] == wm_wv:
+            if f[col] == m_v_wm_wv:
                 split_cols = vintage_data_unsplit[col].apply(pd.Series)
-                split_cols.columns = [col+'_wm', col+'_wv']
+                split_cols.columns = [col+'_m', col+'_v', col+'_wm', col+'_wv']
             else:
                 split_cols = vintage_data_unsplit[col]
                 split_cols.name = '{0}_{1}'.format(col, f[col])
@@ -183,7 +185,7 @@ def main(args):
                                                            args.dataname, 'vintage_analysis',
                                                            'data')))
     VINTAGE_PATH = os.path.join(PATH, 'vintage_analysis')
-    EXPORT_PATH = os.path.join(VINTAGE_PATH, 'data')    
+    EXPORT_PATH = os.path.join(VINTAGE_PATH, 'data')
     # create new folder if not exist
     if not os.path.exists(VINTAGE_PATH):
         print('Creating main directory for vintage analysis')
@@ -192,8 +194,8 @@ def main(args):
         print('Creating directory at export location')
         os.makedirs(EXPORT_PATH)
         
-    export_name = 'vint_{0}_{1}.csv'.format(os.path.splitext(args.filelist)[0],
-                                            lower_lim)
+    export_name = 'vintage_{0}_{1}.csv'.format(os.path.splitext(args.filelist)[0],
+                                               lower_lim)
     df_vintages.to_csv(os.path.join(EXPORT_PATH, export_name))
 
 

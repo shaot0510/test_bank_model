@@ -1,11 +1,15 @@
 import math
+import os
 import sys
 import numpy as np
 import pandas as pd
+import errno
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
 from sklearn.metrics import roc_curve, auc, roc_auc_score, recall_score
-
+import datetime
+import pickle
 
 def get_roc_curve(true, score):
     fpr, tpr, _ = roc_curve(y_true=true, y_score=score)
@@ -83,7 +87,7 @@ def get_PRD_expansion(orig_df, id_name='LOAN_ID',
 
 
 # check NAs and drop those with more than 1%
-def drop_NA_cols(df, cutoff=0.01, excluded=[]):
+def drop_NA_cols(df, cutoff=0.05, excluded=[]):
     # check NAs
     col_na = df.apply(lambda x: x.isna().mean(), axis=0)
     drop_cols = col_na[col_na > cutoff]
@@ -164,3 +168,63 @@ def train_test_splitter(df, test_ratio, key=None):
                                           key)
         yield train, test, count
         count += 1
+
+
+
+
+
+def save_model(model, filename):
+    base_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'data', 'fannie_mae_data', 'vintage_analysis', 'data', 'saved_model')
+    path = os.path.join(base_path, filename)
+    with open(path, 'wb') as file:
+        pickle.dump(model, file)
+
+def load_model(filename):
+    base_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'data', 'fannie_mae_data', 'vintage_analysis', 'data', 'saved_model')
+    path = os.path.join(base_path, filename)
+    with open(path, 'rb') as file:  
+        return pickle.load(file)
+
+def save_3stages(stage1, stage2, stage3, pathname):
+    time = datetime.datetime.now().strftime('%y%m%d')
+    name = time + '-' + pathname
+    base_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'data', 'fannie_mae_data', 'vintage_analysis', 'data', 'saved_model')
+    path = os.path.join(base_path, name)
+    path1 = os.path.join(path, 'stage1')
+    path2 = os.path.join(path, 'stage2')
+    path3 = os.path.join(path, 'stage3')
+    if not os.path.exists(os.path.dirname(path1)):
+        try:
+            os.makedirs(os.path.dirname(path1))
+        except OSError as exc: # Guard against race condition
+            if exc.errno != errno.EEXIST:
+                raise
+    if not os.path.exists(os.path.dirname(path2)):
+        try:
+            os.makedirs(os.path.dirname(path2))
+        except OSError as exc: # Guard against race condition
+            if exc.errno != errno.EEXIST:
+                raise
+    if not os.path.exists(os.path.dirname(path3)):
+        try:
+            os.makedirs(os.path.dirname(path3))
+        except OSError as exc: # Guard against race condition
+            if exc.errno != errno.EEXIST:
+                raise        
+    save_model(stage1, path1)
+    save_model(stage2, path2)
+    save_model(stage3, path3)
+
+def load_all(filepath):
+    base_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'data', 'fannie_mae_data', 'vintage_analysis', 'data', 'saved_model')
+    path = os.path.join(base_path, filepath)
+    path1 = os.path.join(path, 'stage1')
+    path2 = os.path.join(path, 'stage2')
+    path3 = os.path.join(path, 'stage3')
+    model1 = load_model(path1)
+    model2 = load_model(path2)
+    model3 = load_model(path3)
+    return model1, model2, model3
+    
+    
+    
